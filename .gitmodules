@@ -1,0 +1,3 @@
+[submodule "third-party/cubism-rs"]
+	path = third-party/cubism-rs
+	url = git@github.com:you-win/cubism-rs.git
