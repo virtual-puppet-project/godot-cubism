@@ -19,3 +19,5 @@ Follow the steps below. Tested with Rust stable 1.56
 ## Compiling for Linux
 Follow the [Compiling for Windows](#compiling-for-windows) steps. The `TARGET` environment variable in `cargo-build.sh` will need to be modified for your system.
 
+# License
+This library is licensed under the [Apache-2.0 license](LICENSE) and the [Live2D Open Software License](https://www.live2d.com/eula/live2d-open-software-license-agreement_en.html)
