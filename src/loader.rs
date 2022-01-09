@@ -1,5 +1,5 @@
 use cubism::{
-    core::model::{Drawable, Parameter, Part},
+    core::{Drawable, Parameter, Part},
     json::model::{
         Expression, FileReferences, Group, GroupTarget, HitArea, Layout, Model3, Motion, Motions,
     },
@@ -43,14 +43,6 @@ impl CubismLoaderFactory {
     }
 }
 
-// #[derive(NativeClass)]
-// #[inherit(Reference)]
-// #[user_data(user_data::MutexData<CubismLoader>)]
-// pub struct CubismLoader {
-//     model: Option<UserModel>,
-//     json: Option<Model3>,
-//     res_path: Option<PathBuf>, // This might be a relative path?
-// }
 #[derive(NativeClass)]
 #[inherit(Reference)]
 #[no_constructor]
@@ -290,6 +282,19 @@ impl CubismLoader {
             moc.drawable_vertex_counts().to_vec(),
         );
         d.insert("drawable_count", moc.drawable_count() as i32);
+
+        d.into_shared()
+    }
+
+    #[export]
+    pub fn canvas_info(&self, _owner: &Reference) -> Dictionary {
+        let d = Dictionary::new();
+
+        let (size, origin, ppu) = self.model.model().canvas_info();
+
+        d.insert("size", Vector2::new(size[0], size[1]));
+        d.insert("origin", Vector2::new(origin[0], origin[1]));
+        d.insert("ppu", ppu);
 
         d.into_shared()
     }

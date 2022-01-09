@@ -1,5 +1,5 @@
 use cubism::{
-    core::model::{Drawable, Parameter, Part},
+    core::{ConstantFlags, Drawable, DynamicFlags, Parameter, Part},
     json::model::Motion,
 };
 use gdnative::prelude::{Dictionary, Vector2};
@@ -62,7 +62,31 @@ pub fn create_dict_from_drawable(drawable: &Drawable) -> Dictionary {
     d.insert("opacity", drawable.opacity);
     d.insert::<_, Vec<i32>>("masks", drawable.masks.to_vec());
     d.insert("constant_flags", drawable.constant_flags.bits());
+    d.insert(
+        "constant_flags_string",
+        format!("{:?}", drawable.constant_flags),
+    );
+    d.insert(
+        "constant_flags_binary",
+        format!("{:#b}", drawable.constant_flags),
+    );
+    d.insert(
+        "constant_flags_hex",
+        format!("{:#x}", drawable.constant_flags),
+    );
     d.insert("dynamic_flags", drawable.dynamic_flags.bits());
+    d.insert(
+        "dynamic_flags_string",
+        format!("{:?}", drawable.dynamic_flags),
+    );
+    d.insert(
+        "dynamic_flags_binary",
+        format!("{:#b}", drawable.dynamic_flags),
+    );
+    d.insert(
+        "dynamic_flags_hex",
+        format!("{:#x}", drawable.dynamic_flags),
+    );
 
     d.into_shared()
 }
