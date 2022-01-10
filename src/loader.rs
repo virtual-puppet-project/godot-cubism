@@ -1,7 +1,12 @@
 use cubism::{
     core::{Drawable, Parameter, Part},
-    json::model::{
-        Expression, FileReferences, Group, GroupTarget, HitArea, Layout, Model3, Motion, Motions,
+    expression::Expression,
+    json::{
+        model::{GroupTarget, Model3, Motions},
+        motion::Motion3,
+        physics::Physics3,
+        pose::Pose3,
+        user_data::UserData3,
     },
     model::UserModel,
 };
@@ -10,13 +15,23 @@ use std::{fs::File, path::PathBuf};
 
 use crate::dict_helpers::*;
 
+#[derive(Default)]
+struct MotionData {
+    idle: Vec<Motion3>,
+    tap_body: Vec<Motion3>,
+    pinch_in: Vec<Motion3>,
+    pinch_out: Vec<Motion3>,
+    shake: Vec<Motion3>,
+    flick_head: Vec<Motion3>,
+}
+
 #[derive(NativeClass, Copy, Clone, Default)]
-#[user_data(MutexData<CubismLoaderFactory>)]
+#[user_data(MutexData<CubismModelFactory>)]
 #[inherit(Reference)]
-pub struct CubismLoaderFactory;
+pub struct CubismModelFactory;
 
 #[methods]
-impl CubismLoaderFactory {
+impl CubismModelFactory {
     fn new(_owner: &Reference) -> Self {
         Self
     }
@@ -26,18 +41,72 @@ impl CubismLoaderFactory {
         &self,
         _owner: &Reference,
         path: String,
-    ) -> Instance<CubismLoader, Unique> {
+        file_name: String,
+    ) -> Instance<CubismModel, Unique> {
         let res_path = PathBuf::from(path);
 
-        let json = Model3::from_reader(File::open(&res_path).expect("Unable to open file"))
-            .expect("Unable to read model3 json");
+        let json3 = Model3::from_reader(
+            File::open(&res_path.join(file_name)).expect("Unable to open file"),
+        )
+        .expect("Unable to read model3 json");
 
-        let model = UserModel::from_model3_json(&res_path).expect("Unable to load model");
+        let model = UserModel::from_model3(&res_path, &json3).expect("Unable to user model file");
 
-        CubismLoader {
-            model,
-            json,
+        let expressions: Vec<Expression> = json3
+            .file_references
+            .expressions
+            .iter()
+            .map(|x| {
+                Expression::from_exp3_json(&model, res_path.join(&x.file))
+                    .expect("Unable to load expression file")
+            })
+            .collect();
+
+        let mut pose3 = None;
+        if let Some(pose_path) = &json3.file_references.pose {
+            pose3 = Pose3::from_reader(
+                File::open(&res_path.join(pose_path)).expect("Unable to open file"),
+            )
+            .ok();
+        }
+
+        let mut physics3 = None;
+        if let Some(physics_path) = &json3.file_references.physics {
+            physics3 = Physics3::from_reader(
+                File::open(&res_path.join(physics_path)).expect("Unable to open file"),
+            )
+            .ok();
+        }
+
+        let mut user_data3 = None;
+        if let Some(user_data_path) = &json3.file_references.user_data {
+            user_data3 = UserData3::from_reader(
+                File::open(&res_path.join(user_data_path)).expect("Unable to open file"),
+            )
+            .ok();
+        }
+
+        let mut motions = MotionData::default();
+        let motion_files = &json3.file_references.motions;
+        motions.idle = motion_files
+            .idle
+            .iter()
+            .map(|x| {
+                Motion3::from_reader(
+                    File::open(&res_path.join(&x.file)).expect("Unable to open idle motion file"),
+                )
+                .expect("Unable to read idle motion file")
+            })
+            .collect();
+
+        CubismModel {
             res_path,
+            model,
+            json: json3,
+            expressions,
+            pose: pose3,
+            physics: physics3,
+            user_data: user_data3,
         }
         .emplace()
     }
@@ -46,18 +115,22 @@ impl CubismLoaderFactory {
 #[derive(NativeClass)]
 #[inherit(Reference)]
 #[no_constructor]
-#[user_data(user_data::MutexData<CubismLoader>)]
-pub struct CubismLoader {
+#[user_data(user_data::MutexData<CubismModel>)]
+pub struct CubismModel {
+    res_path: PathBuf, // This might be a relative path?
     model: UserModel,
     json: Model3,
-    res_path: PathBuf, // This might be a relative path?
+    expressions: Vec<Expression>,
+    pose: Option<Pose3>,
+    physics: Option<Physics3>,
+    user_data: Option<UserData3>,
 }
 
-unsafe impl Sync for CubismLoader {}
-unsafe impl Send for CubismLoader {}
+unsafe impl Sync for CubismModel {}
+unsafe impl Send for CubismModel {}
 
 #[methods]
-impl CubismLoader {
+impl CubismModel {
     #[export]
     pub fn json(&self, _owner: &Reference) -> Dictionary {
         let d = Dictionary::new();
