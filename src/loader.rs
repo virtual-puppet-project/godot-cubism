@@ -2,6 +2,7 @@ use cubism::{
     core::{Drawable, Parameter, Part},
     expression::Expression,
     json::{
+        expression::{Expression3, ExpressionBlendType, ExpressionParameter},
         model::{GroupTarget, Model3, Motions},
         motion::Motion3,
         physics::Physics3,
@@ -11,7 +12,7 @@ use cubism::{
     model::UserModel,
 };
 use gdnative::prelude::*;
-use std::{fs::File, path::PathBuf};
+use std::{collections::HashMap, fs::File, path::PathBuf};
 
 use crate::dict_helpers::*;
 
@@ -37,7 +38,7 @@ impl CubismModelFactory {
     }
 
     #[export]
-    pub fn cubism_loader(
+    pub fn cubism_model(
         &self,
         _owner: &Reference,
         path: String,
@@ -52,15 +53,16 @@ impl CubismModelFactory {
 
         let model = UserModel::from_model3(&res_path, &json3).expect("Unable to user model file");
 
-        let expressions: Vec<Expression> = json3
-            .file_references
-            .expressions
-            .iter()
-            .map(|x| {
-                Expression::from_exp3_json(&model, res_path.join(&x.file))
-                    .expect("Unable to load expression file")
-            })
-            .collect();
+        let mut expressions = HashMap::new();
+        for exp in json3.file_references.expressions.iter() {
+            expressions.insert(
+                exp.name.to_string(),
+                Expression3::from_reader(
+                    File::open(&res_path.join(&exp.file)).expect("Unable to open file"),
+                )
+                .ok(),
+            );
+        }
 
         let mut pose3 = None;
         if let Some(pose_path) = &json3.file_references.pose {
@@ -120,7 +122,7 @@ pub struct CubismModel {
     res_path: PathBuf, // This might be a relative path?
     model: UserModel,
     json: Model3,
-    expressions: Vec<Expression>,
+    expressions: HashMap<String, Option<Expression3>>,
     pose: Option<Pose3>,
     physics: Option<Physics3>,
     user_data: Option<UserData3>,
@@ -131,6 +133,8 @@ unsafe impl Send for CubismModel {}
 
 #[methods]
 impl CubismModel {
+    //#region Struct fields
+
     #[export]
     pub fn json(&self, _owner: &Reference) -> Dictionary {
         let d = Dictionary::new();
@@ -306,6 +310,110 @@ impl CubismModel {
     }
 
     #[export]
+    pub fn expressions(&self, _owner: &Reference) -> VariantArray {
+        let va = VariantArray::new();
+
+        for (key, value) in self.expressions.iter() {
+            let d = Dictionary::new();
+
+            d.insert("name", key.to_string());
+            if let Some(exp) = value {
+                d.insert("type", exp.ty.to_string());
+                d.insert("fade_in_time", exp.fade_in_time);
+                d.insert("fade_out_time", exp.fade_out_time);
+                d.insert("parameters", {
+                    let va = VariantArray::new();
+
+                    for p in exp.parameters.iter() {
+                        let d = Dictionary::new();
+
+                        d.insert("id", p.id.to_string());
+                        d.insert("blend_type", p.blend_type as i32);
+                        d.insert(
+                            "blend_type_string",
+                            match p.blend_type {
+                                ExpressionBlendType::Add => "Add",
+                                ExpressionBlendType::Multiply => "Multiply",
+                                ExpressionBlendType::Overwrite => "Overwrite",
+                            },
+                        );
+                        d.insert("value", p.value);
+
+                        va.push(d.into_shared());
+                    }
+
+                    va.into_shared()
+                });
+            }
+
+            va.push(d.into_shared());
+        }
+
+        va.into_shared()
+    }
+
+    #[export]
+    pub fn pose(&self, _owner: &Reference) -> Dictionary {
+        let d = Dictionary::new();
+
+        if let Some(pose) = &self.pose {
+            d.insert("type", pose.ty.to_string());
+            d.insert("groups", {
+                let va = VariantArray::new();
+
+                for g in pose.groups.iter() {
+                    let a = VariantArray::new();
+
+                    for pi in g.iter() {
+                        let d = Dictionary::new();
+
+                        d.insert("id", pi.id.to_string());
+                        d.insert("link", {
+                            let va = VariantArray::new();
+
+                            for l in pi.link.iter() {
+                                va.push(l.to_string());
+                            }
+
+                            va.into_shared()
+                        });
+
+                        a.push(d.into_shared());
+                    }
+
+                    va.push(a.into_shared());
+                }
+
+                va.into_shared()
+            });
+            d.insert("fade_in_time", pose.fade_in_time);
+        }
+
+        d.into_shared()
+    }
+
+    #[export]
+    pub fn user_data(&self, _owner: &Reference) -> Dictionary {
+        let d = Dictionary::new();
+
+        if let Some(ud) = &self.user_data {
+            d.insert("version", ud.version);
+            d.insert("meta", {
+                let d = Dictionary::new();
+
+                d.insert("user_data_count", ud.meta.user_data_count);
+                d.insert("total_user_data_size", ud.meta.total_user_data_size);
+
+                d.into_shared()
+            })
+        }
+
+        d.into_shared()
+    }
+
+    //#endregion
+
+    #[export]
     pub fn moc(&self, _owner: &Reference) -> Dictionary {
         let d = Dictionary::new();
 
@@ -372,8 +480,7 @@ impl CubismModel {
         d.into_shared()
     }
 
-    // Parameters
-    //#region
+    //#region Parameters
 
     #[export]
     pub fn parameter(&self, _owner: &Reference, param_name: String) -> Dictionary {
@@ -396,8 +503,7 @@ impl CubismModel {
 
     //#endregion
 
-    // Parts
-    //#region
+    //#region Parts
 
     #[export]
     pub fn part(&self, _owner: &Reference, part_name: String) -> Dictionary {
@@ -420,8 +526,7 @@ impl CubismModel {
 
     //#endregion
 
-    // Drawables
-    //#region
+    //#region Drawables
 
     #[export]
     pub fn drawable(&self, _owner: &Reference, drawable_name: String) -> Dictionary {
