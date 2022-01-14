@@ -1,8 +1,11 @@
 use cubism::{
     core::{ConstantFlags, Drawable, DynamicFlags, Parameter, Part},
-    json::model::Motion,
+    json::{
+        model::Motion,
+        motion::{Motion3, Segment, SegmentPoint},
+    },
 };
-use gdnative::prelude::{Dictionary, Vector2};
+use gdnative::prelude::{Dictionary, ToVariant, VariantArray, Vector2};
 
 pub fn create_dict_from_motion(m: &Motion) -> Dictionary {
     let d = Dictionary::new();
@@ -10,6 +13,113 @@ pub fn create_dict_from_motion(m: &Motion) -> Dictionary {
     d.insert("file", m.file.to_str().unwrap_or("invalid"));
     d.insert("fade_in_time", m.fade_in_time);
     d.insert("fade_out_time", m.fade_out_time);
+
+    d.into_shared()
+}
+
+pub fn create_dict_from_motion3(m: &Motion3) -> Dictionary {
+    let d = Dictionary::new();
+
+    d.insert("version", m.version);
+    d.insert("meta", {
+        let d = Dictionary::new();
+
+        let meta = m.meta;
+
+        d.insert("duration", meta.duration);
+        d.insert("fps", meta.fps);
+        d.insert("looped", meta.looped);
+        d.insert("restricted_beziers", meta.restricted_beziers);
+        d.insert("curve_count", meta.curve_count);
+        d.insert("total_segment_count", meta.total_segment_count);
+        d.insert("total_point_count", meta.total_point_count);
+        d.insert("user_data_count", meta.user_data_count);
+        d.insert("total_user_data_size", meta.total_user_data_size);
+
+        d.into_shared()
+    });
+    d.insert::<&str, Vec<Dictionary>>(
+        "curves",
+        m.curves
+            .iter()
+            .map(|c| {
+                let d = Dictionary::new();
+
+                d.insert("target", c.target.to_string());
+                d.insert("id", c.id.to_string());
+                d.insert::<&str, Vec<Dictionary>>(
+                    "segments",
+                    c.segments
+                        .iter()
+                        .map(|s| {
+                            let dict = Dictionary::new();
+                            match s {
+                                Segment::Linear(sp_a, sp_b) => {
+                                    dict.insert("type", "linear");
+
+                                    let d = Dictionary::new();
+
+                                    d.insert(
+                                        "segment_point_a",
+                                        create_dict_from_segment_point(sp_a),
+                                    );
+                                    d.insert(
+                                        "segment_point_b",
+                                        create_dict_from_segment_point(sp_b),
+                                    );
+
+                                    dict.insert("value", d.into_shared());
+                                }
+                                Segment::Bezier(a) => {
+                                    dict.insert("type", "bezier");
+
+                                    let va = VariantArray::new();
+
+                                    for sp in a.iter() {
+                                        va.push(create_dict_from_segment_point(sp));
+                                    }
+
+                                    dict.insert("value", va.into_shared())
+                                }
+                                Segment::Stepped(sp, f) => {
+                                    dict.insert("type", "stepped");
+
+                                    let d = Dictionary::new();
+
+                                    d.insert("segment_point", create_dict_from_segment_point(sp));
+                                    d.insert("value", f);
+
+                                    dict.insert("value", d.into_shared());
+                                }
+                                Segment::InverseStepped(f, sp) => {
+                                    dict.insert("type", "inverse_stepped");
+
+                                    let d = Dictionary::new();
+
+                                    d.insert("value", f);
+                                    d.insert("segment_point", create_dict_from_segment_point(sp));
+
+                                    dict.insert("value", d.into_shared());
+                                }
+                            }
+                            dict.into_shared()
+                        })
+                        .collect(),
+                );
+
+                d.into_shared()
+            })
+            .collect(),
+    );
+
+    d.into_shared()
+}
+
+pub fn create_dict_from_segment_point(sp: &SegmentPoint) -> Dictionary {
+    let d = Dictionary::new();
+
+    d.insert("time", sp.time);
+    d.insert("value", sp.value);
 
     d.into_shared()
 }
